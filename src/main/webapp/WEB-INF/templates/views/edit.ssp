@@ -1,0 +1,12 @@
+<%@ val person: String %>
+<div class="container-fluid">
+   <div class="row well" id="top_controls">
+   	<h1> MetaHathi -- Editing! </h1>
+   	<p>Logged in as <%= person %> (<a href="/logout">logout</a>)</p>
+   </div>
+   <div class="row" id="openRefine_frame">
+   	<iframe src="http://localhost:3333">
+   		<!-- OpenRefine to appear here -->
+   	</iframe>
+   </div>
+</div>
