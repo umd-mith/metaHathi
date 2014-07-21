@@ -1,0 +1,13 @@
+<div class="jumbotron">
+  <div class="container">
+    <h1>Hathi Metadata Importer</h1>
+    <p>Import Hathi Trust Digital Library metadata into OpenRefine for making, storing, and replaying your own corrections.</p>
+
+    <p>Before proceeding, please login with an OpenID provider (only Google supported for now):</p>
+
+    <a class="btn btn-info btn-lg btn-file" role="button" href="/login/google">
+      Login
+    </a>
+
+  </div>
+</div>

@@ -1,0 +1,8 @@
+<%@ val urls: List[String] %>
+<p>Metadata imported! For example, here are the URLs for each entry:</p>
+
+<ul>
+  #for (i <- urls)
+    <li>${i}</li>
+  #end
+</ul>

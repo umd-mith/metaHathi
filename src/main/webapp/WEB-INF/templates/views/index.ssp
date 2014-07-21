@@ -1,0 +1,25 @@
+<%@ val person: String %>
+<div class="jumbotron">
+  <div class="container">
+    <h1>Hathi Metadata Importer</h1>
+    
+    <p>Welcome <%= person %> (<a href="/logout">logout</a>)</p>
+
+    <a class="btn btn-primary btn-lg" id="btn-import" role="button" href="/process">
+      Import metadata to OpenRefine
+    </a>
+    <img id="spinner" src='/images/spinner.gif'></img>
+
+  </div>
+</div>
+
+<script>
+
+$("#spinner").hide();
+
+$("#btn-import").click(function(){
+	$(this).hide();
+	$("#spinner").show();
+});
+
+</script>
