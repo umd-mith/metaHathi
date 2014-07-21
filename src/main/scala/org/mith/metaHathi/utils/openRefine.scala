@@ -52,7 +52,7 @@ class OpenRefineImporter(refineHost:String, port:Int=3333) {
     EntityUtils.toString(response.getEntity())
   }
 
-  def sendData(data:List[Json]) = {
+  def sendData(data:List[Json], path:List[String]) = {
     import org.apache.http.entity.ContentType
     import java.nio.charset.StandardCharsets
 
@@ -75,11 +75,14 @@ class OpenRefineImporter(refineHost:String, port:Int=3333) {
 
     request.setEntity(entity.build())
     client.execute(request)
-    finalize(jobId)
+
+    // checkStatus(jobId)
+
+    finalize(jobId, path)
 
   }
 
-  def finalize (jobId:String) {
+  def finalize (jobId:String, path:List[String]) {
     import org.apache.http.NameValuePair
     import org.apache.http.client.entity.UrlEncodedFormEntity
     import org.apache.http.message.BasicNameValuePair
@@ -88,12 +91,13 @@ class OpenRefineImporter(refineHost:String, port:Int=3333) {
 
     val options = 
       Json(
-        "recordPath" := List("__anonymous__", "record"),
+        "recordPath" := path,
         "limit" := -1,
         "trimStrings" := jFalse,
         "guessCellValueTypes" := jFalse,
         "storeEmptyStrings" := jTrue,
-        "includeFileSources" := jFalse
+        "includeFileSources" := jFalse,
+        "projectName" := "MetaHathi"
       )
 
     val params = 
