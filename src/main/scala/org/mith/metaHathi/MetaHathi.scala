@@ -79,12 +79,8 @@ class HathiImport extends MetaHathiStack with ScalateSupport with FileUploadSupp
     contentType = "text/html"   
 
     sessionAuth.get(session.getId) match {
-      case None => { 
-
-        ssp("/login")
-
-      }
-      case Some(user) => {
+      case None => ssp("/login")
+      case Some(user) => 
         
         val base = new File("/home/rviglian/Projects/htrc/hathi/output/results")
         val myCol = new Collection(base, base)
@@ -100,25 +96,38 @@ class HathiImport extends MetaHathiStack with ScalateSupport with FileUploadSupp
             case JsonPat(bib, id, ext) =>
               val htid = new Htid(bib, id)
               val metadata = myCol.volumeMetadata(htid).getOrElse(halt(500, "500"))               
-              MetadataWrangler.recordToJson(metadata)              
+              MetadataWrangler.volumeToJson(metadata)              
             case _ => jEmptyString
           }
         )
 
-        importer.sendData(data)
+        importer.sendData(data, List("__anonymous__", "volume"))
 
-      }
+        redirect("/edit")
+      
     }
 
   }
 
+  get("/edit") {
+
+    contentType = "text/html"
+
+    sessionAuth.get(session.getId) match {
+        case Some(user) => 
+          val person = "%s %s".format(user.firstName, user.lastName) 
+          ssp("/edit", "person" -> person)
+        case None => ssp("/login") 
+    }
+  }
+
   get("/logout") {
-      sessionAuth.get(session.getId) match {
-          case Some(user) => sessionAuth -= session.getId
-          case None => 
-      }
-      session.invalidate()
-      redirect("/")
+    sessionAuth.get(session.getId) match {
+        case Some(user) => sessionAuth -= session.getId
+        case None => 
+    }
+    session.invalidate()
+    redirect("/")
   }
 
   
