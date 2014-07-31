@@ -1,5 +1,8 @@
 package org.mith.metaHathi.utils
 
+import scala.concurrent._
+import ExecutionContext.Implicits.global
+
 import scalaz._, Scalaz._
 import argonaut._, Argonaut._
 
@@ -14,7 +17,7 @@ import org.apache.http.impl.client.HttpClientBuilder
 import org.apache.http.util.EntityUtils
 
 
-class OpenRefineImporter(refineHost:String, port:Int=3333) {
+class OpenRefineImporter(refineHost:String) {
 
   val client = HttpClientBuilder.create().build  
 
@@ -27,7 +30,7 @@ class OpenRefineImporter(refineHost:String, port:Int=3333) {
       "?" + p
     } else ""
 
-    new HttpPost("http://" + refineHost + ":" + port.toString + "/" + command + paramStr)
+    new HttpPost("http://" + refineHost + "/" + command + paramStr)
   }
 
   def createImportingJob() : String = {
@@ -52,7 +55,7 @@ class OpenRefineImporter(refineHost:String, port:Int=3333) {
     EntityUtils.toString(response.getEntity())
   }
 
-  def sendData(data:List[Json], path:List[String]) = {
+  def sendData(data:List[Json], path:List[String]) : Option[Future[Option[String]]] = {
     import org.apache.http.entity.ContentType
     import java.nio.charset.StandardCharsets
 
@@ -78,11 +81,44 @@ class OpenRefineImporter(refineHost:String, port:Int=3333) {
 
     // checkStatus(jobId)
 
-    finalize(jobId, path)
+    val fin = finalize(jobId, path)
+
+    if (Parse.parseWith(fin, _.field("message").getOrElse("0").toString, msg => msg) == "\"done\"" ) {
+      // val status : Json = Parse.parseWith(checkStatus(jobId), _.field("job").getOrElse(jEmptyObject), msg => msg)
+      // val cursor = status.cursor
+      // println(cursor --\ "job" --\ "config" --\ "state")
+      // println(Parse.parseWith(checkStatus(jobId), _.field("progress").getOrElse("0").toString, msg => msg))
+
+      def getAsyncProjectId() : Option[String] = {
+        val status: Option[Json] = Parse.parseOption(checkStatus(jobId))  
+        if (status.isDefined) {
+          val cursor = status.get.hcursor
+          val state = (cursor --\ "job" --\ "config" --\ "projectID")
+          Some(
+            state.focus.getOrElse(
+              getAsyncProjectId()
+            ).toString)
+        }
+        else None
+      }
+      
+      // val projectId: Future[Option[String]] = future {
+      Some ( 
+        future {
+          getAsyncProjectId()
+        } 
+      )
+
+      // projectId onSuccess {
+      //   case pid => println(pid.get)
+      // }
+
+    }
+    else None
 
   }
 
-  def finalize (jobId:String, path:List[String]) {
+  def finalize (jobId:String, path:List[String]) : String = {
     import org.apache.http.NameValuePair
     import org.apache.http.client.entity.UrlEncodedFormEntity
     import org.apache.http.message.BasicNameValuePair
@@ -114,7 +150,8 @@ class OpenRefineImporter(refineHost:String, port:Int=3333) {
     nameValuePairs.add(new BasicNameValuePair("options", options.toString))
     request.setEntity(new UrlEncodedFormEntity(nameValuePairs))
 
-    client.execute(request)
+    val response = client.execute(request)   
+    EntityUtils.toString(response.getEntity())
 
   }
 
