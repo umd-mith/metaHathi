@@ -6,6 +6,9 @@ import edu.umd.mith.hathi.{Collection, Htid}
 import scala.collection.JavaConversions._
 import collection.mutable.ConcurrentMap
 
+import scala.concurrent._
+import ExecutionContext.Implicits.global
+
 import java.util.concurrent.ConcurrentHashMap
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -30,7 +33,9 @@ case class AuthUser(email: String, firstName: String, lastName: String)
 class HathiImport extends MetaHathiStack with ScalateSupport with FileUploadSupport {
 
   private val APP_URL = "http://localhost:8081"
-  private val OPENREFINE_HOST = "127.0.0.1"
+  // private val OPENREFINE_HOST = "127.0.0.1:3333"
+  // private val APP_URL = "http://localhost:8080"
+  private val OPENREFINE_HOST = "127.0.0.1:8080/openrefine"
 
   configureMultipartHandling(MultipartConfig(maxFileSize = Some(3*1024*1024)))
 
@@ -82,7 +87,8 @@ class HathiImport extends MetaHathiStack with ScalateSupport with FileUploadSupp
       case None => ssp("/login")
       case Some(user) => 
         
-        val base = new File("/home/rviglian/Projects/htrc/hathi/output/results")
+        // val base = new File("/home/rviglian/Projects/htrc/hathi/output/results")
+        val base = new File("/home/rviglian/Desktop")
         val myCol = new Collection(base, base)
 
         val JsonPat = """(.*)?\.([^,]*)?\.(json)$""".r
@@ -101,9 +107,12 @@ class HathiImport extends MetaHathiStack with ScalateSupport with FileUploadSupp
           }
         )
 
-        importer.sendData(data, List("__anonymous__", "volume"))
+        val projectId: Option[Future[Option[String]]] = importer.sendData(data, List("_", "volume"))
+        val pidFuture = projectId.get
 
-        redirect("/edit")
+        pidFuture onSuccess {
+          case pid => redirect("/edit/" + pid.get) //println(pid.get)
+        }
       
     }
 
