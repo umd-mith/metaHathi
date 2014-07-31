@@ -10,6 +10,10 @@
     </a>
     <img id="spinner" src='/images/spinner.gif'></img>
 
+    <a class="btn btn-primary btn-lg" id="btn-import" role="button" href="/edit">
+      Work on your OpenRefine project
+    </a>
+
   </div>
 </div>
 
