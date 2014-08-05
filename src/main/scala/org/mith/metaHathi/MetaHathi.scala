@@ -21,6 +21,8 @@ import org.scalatra.servlet.{FileUploadSupport, MultipartConfig, SizeConstraintE
 import scalaz._, Scalaz._
 import argonaut._, Argonaut._
 
+import _root_.akka.actor.{Actor, ActorRef, ActorSystem}
+
 import org.openid4java.consumer._
 import org.openid4java.discovery._
 import org.openid4java.message.ax._
@@ -30,12 +32,14 @@ import org.apache.http._
 
 case class AuthUser(email: String, firstName: String, lastName: String)
 
-class HathiImport extends MetaHathiStack with ScalateSupport with FileUploadSupport {
+class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport with FileUploadSupport with FutureSupport{
 
   private val APP_URL = "http://localhost:8081"
   // private val OPENREFINE_HOST = "127.0.0.1:3333"
   // private val APP_URL = "http://localhost:8080"
   private val OPENREFINE_HOST = "127.0.0.1:8080/openrefine"
+
+  protected implicit def executor: ExecutionContext = system.dispatcher
 
   configureMultipartHandling(MultipartConfig(maxFileSize = Some(3*1024*1024)))
 
@@ -87,8 +91,8 @@ class HathiImport extends MetaHathiStack with ScalateSupport with FileUploadSupp
       case None => ssp("/login")
       case Some(user) => 
         
-        // val base = new File("/home/rviglian/Projects/htrc/hathi/output/results")
-        val base = new File("/home/rviglian/Desktop")
+        val base = new File("/home/rviglian/Projects/htrc/hathi/output/results")
+        // val base = new File("/home/rviglian/Desktop")
         val myCol = new Collection(base, base)
 
         val JsonPat = """(.*)?\.([^,]*)?\.(json)$""".r
@@ -107,25 +111,26 @@ class HathiImport extends MetaHathiStack with ScalateSupport with FileUploadSupp
           }
         )
 
-        val projectId: Option[Future[Option[String]]] = importer.sendData(data, List("_", "volume"))
-        val pidFuture = projectId.get
+        // importer.sendData returns a future, which is handled implicitly by FutureSupport
+        // so we can use map instead of onSuccess. onSuccess causes redirect to be called out
+        // of context and return an exception.
 
-        pidFuture onSuccess {
-          case pid => redirect("/edit/" + pid.get) //println(pid.get)
+        importer.sendData(data, List("_", "volume")) map {
+          case pid => redirect("/edit/" + pid)
         }
       
     }
 
   }
 
-  get("/edit") {
+  get("/edit/:proj") {
 
     contentType = "text/html"
 
     sessionAuth.get(session.getId) match {
         case Some(user) => 
           val person = "%s %s".format(user.firstName, user.lastName) 
-          ssp("/edit", "person" -> person)
+          ssp("/edit", "person" -> person, "project" -> params("proj"))
         case None => ssp("/login") 
     }
   }
