@@ -29,6 +29,7 @@ object MetaHathiBuild extends Build {
       Classpaths.typesafeReleases
       ),
       libraryDependencies ++= Seq(
+        "com.typesafe.akka" %% "akka-actor" % "2.3.4",
         "org.scalatra" %% "scalatra" % ScalatraVersion,
         "org.scalatra" %% "scalatra-scalate" % ScalatraVersion,
         "org.scalatra" %% "scalatra-specs2" % ScalatraVersion % "test",
