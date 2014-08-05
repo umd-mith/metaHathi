@@ -55,7 +55,7 @@ class OpenRefineImporter(refineHost:String) {
     EntityUtils.toString(response.getEntity())
   }
 
-  def sendData(data:List[Json], path:List[String]) : Option[Future[Option[String]]] = {
+  def sendData(data:List[Json], path:List[String]) : Future[_] = {
     import org.apache.http.entity.ContentType
     import java.nio.charset.StandardCharsets
 
@@ -79,42 +79,30 @@ class OpenRefineImporter(refineHost:String) {
     request.setEntity(entity.build())
     client.execute(request)
 
-    // checkStatus(jobId)
-
+    // Finalize the import
     val fin = finalize(jobId, path)
 
-    if (Parse.parseWith(fin, _.field("message").getOrElse("0").toString, msg => msg) == "\"done\"" ) {
-      // val status : Json = Parse.parseWith(checkStatus(jobId), _.field("job").getOrElse(jEmptyObject), msg => msg)
-      // val cursor = status.cursor
-      // println(cursor --\ "job" --\ "config" --\ "state")
-      // println(Parse.parseWith(checkStatus(jobId), _.field("progress").getOrElse("0").toString, msg => msg))
+    // In order to return the id of the finalized project, we must wait on OpenRefine to
+    // complete the import. So we return a Future of the project id.
+    Future {
 
-      def getAsyncProjectId() : Option[String] = {
-        val status: Option[Json] = Parse.parseOption(checkStatus(jobId))  
-        if (status.isDefined) {
-          val cursor = status.get.hcursor
+      // Before proceeding, make sure the project creation is complete (NB it doens't guarantee that the import is done)
+      // This could be handled more natively, perhaps with another Future.
+      if (Parse.parseWith(fin, _.field("message").getOrElse("0").toString, msg => msg) == "\"done\"" ) {
+
+        // Check status until a project ID appears (which is introduced together with state : created-project)
+        def getAsyncProjectId() : String = {
+          val status: Json = Parse.parseOption(checkStatus(jobId)).get  
+          val cursor = status.hcursor
           val state = (cursor --\ "job" --\ "config" --\ "projectID")
-          Some(
-            state.focus.getOrElse(
-              getAsyncProjectId()
-            ).toString)
+          state.focus.getOrElse( getAsyncProjectId() ).toString
         }
-        else None
+        
+        getAsyncProjectId()
+
       }
-      
-      // val projectId: Future[Option[String]] = future {
-      Some ( 
-        future {
-          getAsyncProjectId()
-        } 
-      )
-
-      // projectId onSuccess {
-      //   case pid => println(pid.get)
-      // }
-
+      else None
     }
-    else None
 
   }
 
