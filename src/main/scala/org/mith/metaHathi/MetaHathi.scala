@@ -1,6 +1,6 @@
 package org.mith.metaHathi
 
-import org.mith.metaHathi.utils.OpenRefineImporter
+import org.mith.metaHathi.utils._
 import edu.umd.mith.hathi.{Collection, Htid}
 
 import scala.collection.JavaConversions._
@@ -106,18 +106,16 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
             case JsonPat(bib, id, ext) =>
               val htid = new Htid(bib, id)
               val metadata = myCol.volumeMetadata(htid).getOrElse(halt(500, "500"))               
-              MetadataWrangler.volumeToJson(metadata)              
+              MetadataWrangler.recordToJson(metadata)              
             case _ => jEmptyString
           }
         )
 
         // importer.sendData returns a future, which is handled implicitly by FutureSupport
-        // so we can use map instead of onSuccess. onSuccess causes redirect to be called out
+        // so we can use for instead of onSuccess. onSuccess causes redirect to be called out
         // of context and return an exception.
 
-        importer.sendData(data, List("_", "volume")) map {
-          case pid => redirect("/edit/" + pid)
-        }
+        for (pid <- importer.sendData(data, List("_", "record"))) yield {redirect("/edit/" + pid)}
       
     }
 
@@ -131,6 +129,20 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
         case Some(user) => 
           val person = "%s %s".format(user.firstName, user.lastName) 
           ssp("/edit", "person" -> person, "project" -> params("proj"))
+        case None => ssp("/login") 
+    }
+  }
+
+  get("/review/:proj") {
+    contentType = "text/html"
+
+    sessionAuth.get(session.getId) match {
+        case Some(user) => 
+          
+          val orClient = new OpenRefineProjectClient(OPENREFINE_HOST, params("proj"))
+
+          orClient.getHistory()
+
         case None => ssp("/login") 
     }
   }
