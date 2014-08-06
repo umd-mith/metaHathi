@@ -3,7 +3,14 @@
 <div class="container-fluid">
    <div class="row well" id="top_controls">
    	<h1> MetaHathi -- Editing! </h1>
-   	<p>Logged in as <%= person %> (<a href="/logout">logout</a>)</p>
+   	<div class="col-sm-9">
+   		<p>Logged in as <%= person %> (<a href="/logout">logout</a>)</p>
+   	</div>
+   	<div class="col-sm-3">
+   		<a class="btn btn-primary btn-lg" id="btn-import" role="button" href="/review/<%= project %>">
+	      Done! Go to review.
+	    </a>
+   	</div>
    </div>
    <div class="row" id="openRefine_frame">   	
    	<iframe src="/openrefine/project?project=<%= project %>">
