@@ -38,6 +38,7 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
   // private val OPENREFINE_HOST = "127.0.0.1:3333"
   // private val APP_URL = "http://localhost:8080"
   private val OPENREFINE_HOST = "127.0.0.1:8080/openrefine"
+  private val RECORDS_PATH = "/home/rviglian/Projects/htrc/hathi/output/results"
 
   protected implicit def executor: ExecutionContext = system.dispatcher
 
@@ -91,8 +92,7 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
       case None => ssp("/login")
       case Some(user) => 
         
-        val base = new File("/home/rviglian/Projects/htrc/hathi/output/results")
-        // val base = new File("/home/rviglian/Desktop")
+        val base = new File(RECORDS_PATH)
         val myCol = new Collection(base, base)
 
         val JsonPat = """(.*)?\.([^,]*)?\.(json)$""".r
@@ -134,15 +134,17 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
   }
 
   get("/review/:proj") {
+
     contentType = "text/html"
 
     sessionAuth.get(session.getId) match {
         case Some(user) => 
-          
-          val orClient = new OpenRefineProjectClient(OPENREFINE_HOST, params("proj"))
+          val person = "%s %s".format(user.firstName, user.lastName) 
 
-          orClient.getHistory()
+          val orClient = new OpenRefineProjectClient(OPENREFINE_HOST, params("proj"))   
+          val changes = orClient.getAllChanges
 
+          ssp("/review", "person" -> person, "changes" -> changes)
         case None => ssp("/login") 
     }
   }
