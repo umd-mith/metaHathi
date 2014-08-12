@@ -10,11 +10,14 @@ import java.io.File
 import java.io.ByteArrayInputStream
 import java.util.ArrayList
 
+// Using apache http utils directly instead of dispatch because 
+// multipart file upload is currently not supported.
 import org.apache.http.entity.mime.MultipartEntityBuilder
 import org.apache.http.client.methods.{HttpPost, HttpGet}
-
 import org.apache.http.impl.client.HttpClientBuilder
 import org.apache.http.util.EntityUtils
+
+import java.util.zip.{ZipFile, ZipEntry}
 
 object HTTPUtils {
 
@@ -31,9 +34,7 @@ object HTTPUtils {
       encode(params)
     } else ""
 
-    println("http://" + refineHost + "/" + command + paramStr)
-
-    new HttpPost("http://" + refineHost + "/" + command + paramStr)
+    new HttpPost("http://%s/%s%s".format(refineHost, command, paramStr))
   }
 
   def createGetRequest(refineHost:String, command:String, params:Map[String, String] = null) : HttpGet = {
@@ -42,41 +43,115 @@ object HTTPUtils {
       encode(params)
     } else ""
 
-    new HttpGet("http://" + refineHost + "/" + command + paramStr)
+    new HttpGet("http://%s/%s%s".format(refineHost, command, paramStr))
   }
 
 }
 
 class OpenRefineProjectClient(refineHost:String, projectId:String, refineData:String = "/tmp/refine"){
 
+  implicit def ColumnDecodeJson: DecodeJson[Column] =
+    DecodeJson(c => for {
+      idx <- (c --\ "cellIndex").as[Int]
+      name <- (c --\ "originalName").as[String]
+    } yield Column(idx, name))
+
   val client = HttpClientBuilder.create().build    
+
+  def close() = {
+    client.close()
+  }
+
+  def getAllChanges(): Map[String, List[Change]] = {
+    getHistory().flatMap( h => getChangesForOperation(h) ).groupBy(_.url)
+  }
 
   // Get history of operations (ignoring future ones)
   // command/core/get-history
   // return list of past operation ids
-  def getHistory() = {
-    import org.apache.http.NameValuePair
-    import org.apache.http.client.entity.UrlEncodedFormEntity
-    import org.apache.http.message.BasicNameValuePair
+  def getHistory(): List[String] = {
 
     val request = HTTPUtils.createGetRequest(refineHost, "command/core/get-history", Map("project" -> projectId))
-
     val response = client.execute(request)
 
-    EntityUtils.toString(response.getEntity())
+    val histJson: Json = Parse.parseOption(EntityUtils.toString(response.getEntity())).getOrElse(jEmptyObject) 
+    val past: List[Json] = (histJson.hcursor --\ "past").focus.get.arrayOrEmpty
+    
+    past.map( p => p.fieldOrZero("id").toString )
 
   }
 
-  // get hathi id for row
+  // get field for row
+  def getFieldforRow(row:String, field: String): String = {
+    // First, find out the column index of record - id
+    val key: Int = getModels().find(_.name == field).get.idx
+    val request = HTTPUtils.createGetRequest(
+      refineHost, "command/core/get-rows", 
+      Map("project" -> projectId,
+        "start" -> row,
+        "limit" -> "1"
+      )
+    )
+    val response = client.execute(request)
+    val rowJson: Json = Parse.parseOption(EntityUtils.toString(response.getEntity())).getOrElse(jEmptyObject)
 
-  // get column name and infer hierarchy 
+    (((rowJson.hcursor --\ "rows" \\).any --\ "cells" =\ key).any --\ "v").focus.getOrElse(jEmptyString)
+      .as[String].value.get
+
+  }
+
+
   // command/core/get-models
+  // it would be good to store the results of this somewhere to avoid 
+  // multiple HTTP requests (at least two per change, see getChangesForOperation)
+  def getModels() : List[Column] = {
+    val request = HTTPUtils.createGetRequest(refineHost, "command/core/get-models", 
+      Map("project" -> projectId))
+    val response = client.execute(request)
+
+    val modelJson: Json = Parse.parseOption(EntityUtils.toString(response.getEntity()))
+      .getOrElse(jEmptyObject) 
+    
+    (modelJson.hcursor --\ "columnModel" --\ "columns").focus.get.arrayOrEmpty.map(
+      c => c.as[Column].value.get
+    )
+
+  }
 
   // get changes for operation id
   // this goes to the refineData folder, unzips the right project file, reads change data for operation id
-  // Builds bare JSON object
-  // Or it could build full object
+  def getChangesForOperation(opId: String) = {
 
+    def getZipEntryInputStream(zipFile: ZipFile)(entry: ZipEntry) = zipFile.getInputStream(entry)
+    val ChangeData = """(?s).*row=(\d+)\ncell=(\d+)\nold=(\{.*?\}\n)new=(\{.*?\}\n).*?""".r
+
+    val zipFile = new ZipFile("%s/%s.project/history/%s.change.zip".format(refineData, projectId, opId))
+    val zis = getZipEntryInputStream(zipFile)(new ZipEntry("change.txt"))
+    // Convert InputStrem to String, assuming the file won't be huge.
+    val changesRaw = scala.io.Source.fromInputStream(zis).mkString
+    zipFile.close()
+
+    val changes: List[Change] = changesRaw.split("/ec/").toList.map( c => c match {
+      case ChangeData(row, cell, old, nw) =>
+        val pold : String = Parse.parseWith(old, _.field("v").getOrElse(jEmptyString).as[String].value.get, 
+          err => err)
+        val pnew : String = Parse.parseWith(nw, _.field("v").getOrElse(jEmptyString).as[String].value.get, 
+          err => err)
+        Some(Change(
+          getFieldforRow(row, "record - url"),          
+          getModels().find(_.idx == cell.toInt).get.name,
+          pold,
+          pnew
+        ))
+        // Can be disaplayed as:
+        // Changed record at http://catalog.hathitrust.org/Record/001728984 (iframe could show record from hathi)
+        // Changed "title" from "gne" to "gnegne"
+      case _ => None
+    }).flatten
+
+    changes
+
+  }
 }
 
 
@@ -94,14 +169,15 @@ class OpenRefineImporter(refineHost:String) {
     val response = client.execute(request)
     val jobJson = EntityUtils.toString(response.getEntity())
     
-    Parse.parseWith(jobJson, _.field("jobID").getOrElse("0").toString, msg => msg)
+    Parse.parseWith(jobJson, _.field("jobID").getOrElse(jEmptyString).toString, err => err)
     
   }
 
   def checkStatus (jobId:String) = {
     // Check job status
 
-    val request = HTTPUtils.createPostRequest(refineHost, "command/core/get-importing-job-status", Map("jobID" -> jobId)) 
+    val request = HTTPUtils.createPostRequest(refineHost, "command/core/get-importing-job-status", 
+      Map("jobID" -> jobId)) 
 
     val response = client.execute(request)
     EntityUtils.toString(response.getEntity())
@@ -143,7 +219,8 @@ class OpenRefineImporter(refineHost:String) {
 
       // Before proceeding, make sure the project creation is complete (NB it doens't guarantee that the import is done)
       // This could be handled more natively, perhaps with another Future.
-      if (Parse.parseWith(fin, _.field("message").getOrElse("0").toString, msg => msg) == "\"done\"" ) {
+      if (Parse.parseWith(fin, _.field("message").getOrElse(jEmptyString).as[String].value.get, 
+        err => err) == "done" ) {
 
         // Check status until a project ID appears (which is introduced together with state : created-project)
         def getAsyncProjectId() : String = {
