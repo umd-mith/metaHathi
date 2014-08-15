@@ -1,21 +1,54 @@
 <%@ val person: String %>
+<%@ val projects: Map[String, String] %>
+<%@ val importing: Boolean %>
 <div class="jumbotron">
   <div class="container">
-    <h1>Hathi Metadata Importer</h1>
-    
+    <h1><a href="/">MetaHathi</a></h1>
+    <h2>a tool for correcting Hathi Metadata</h2>
+
     <p>Welcome <%= person %> (<a href="/logout">logout</a>)</p>
 
+    <% if (importing) { %>
+
+    <div class="alert alert-info" role="alert"> A project is importing! This may take a few minutes. Once done, the project will appear in the list below. Feel free to refresh this page in the meantime!</div>
+
+    <% } else { %>
+
     <a class="btn btn-primary btn-lg" id="btn-import" role="button" href="/process">
-      Import metadata to OpenRefine
+      Create new project with default dataset
     </a>
     <img id="spinner" src='/images/spinner.gif'></img>
 
-    <a class="btn btn-primary btn-lg" id="btn-import" role="button" href="/edit">
-      Work on your OpenRefine project
-    </a>
+    <% } %>
 
   </div>
 </div>
+<%
+  if (projects.size > 0) {
+%>
+<div class="row">
+  <div class="col-md-6">
+
+    <div class="panel panel-default">
+    <div class="panel-heading">Continue working on an existing project</div>
+
+    <div class="list-group">
+<%
+    projects.foreach{ case (proj, date) => 
+%>
+      <a href="/edit/<%= proj %>" class="list-group-item"><%= date %></a>
+<%
+    }
+%>      
+    </div>
+  </div>
+
+
+  </div>
+</div>
+<%
+  }
+%>
 
 <script>
 
