@@ -1,29 +1,54 @@
 <% import org.mith.metaHathi.utils.Change %>
 <%@ val person: String %>
+<%@ val project: String %>
 <%@ val changes: Map[String, List[Change]] %>
 <div class="container-fluid">
    <div class="row well" id="top_controls">
-   	<h1> MetaHathi -- Review changes </h1>
-   	<div>
-   		<p>Logged in as <%= person %> (<a href="/logout">logout</a>)</p>
-   	</div>
+   	<h1> <a href="/">MetaHathi</a> -- Review changes </h1>
+   	<div class="col-sm-9">
+         <p>Logged in as <%= person %> (<a href="/logout">logout</a>)</p>
+      </div>
+      <div class="col-sm-3">
+         <a class="btn btn-primary btn-lg" id="btn-import" role="button" href="/edit/<%= project %>">
+         Go back and continue editing.
+       </a>
+      </div>
    </div>
    <div class="row">
+      <div class="col-md-9">
       <% 
          for ((k,v) <- changes) {
       %>
-            <h2><%= k %></h2>
-            <ul>
+            <div class="panel panel-primary">
+               <div class="panel-heading"><h4>
+                  <a data-toggle="tooltip" data-original-title="View on Hathi Digital Library" href="<%= k %>" style="color:white" target="_blank"><%= k %></a>
+               </h4></div>
+               <table class="table">
       <%
-            v.foreach{ c =>
+            v.groupBy{ x => x }.map { case(c, occ) => (c, occ.size)}.toList.foreach { c =>
       %> 
-               <li>Changed <em><%= c.field %></em> from "<%= c.old %>" to "<strong><%= c.nw %></strong>"
+                  <tr>
+                  <td class="bg-warning"><span class="glyphicon glyphicon-book" data-toggle="tooltip" data-original-title="Field edited"></span> <em><%= c._1.field %></td> 
+                  <td class="bg-danger"><span class="glyphicon glyphicon-remove" data-toggle="tooltip" data-original-title="Old value"></span> <%= c._1.old %></td>
+                  <td class="bg-info"><span class="glyphicon glyphicon-ok" data-toggle="tooltip" data-original-title="New value"></span> <strong><%= c._1.nw %></strong>
+                  
+      <%
+               if (c._2 > 1) {                     
+      %>
+                     <span class="badge" data-toggle="tooltip" data-original-title="Possible duplicate record!"><%=c._2%></span>
+      <%
+               }
+      %>
+            </td></tr>
       <%
             }
       %>
-            </ul>
+               </table>               
+            </div>
       <%
          }
       %>
+      </div>
    </div>
 </div>
+<script>$("body").tooltip({ selector: '[data-toggle=tooltip]' });</script>
