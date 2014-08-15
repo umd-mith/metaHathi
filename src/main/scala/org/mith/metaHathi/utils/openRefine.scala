@@ -48,6 +48,35 @@ object HTTPUtils {
 
 }
 
+class OpenRefineClient(refineHost:String) {
+
+  val client = HttpClientBuilder.create().build
+
+  def getAllProjectMetadataForUser(user:String): Map[String, String] = {
+
+    val request = HTTPUtils.createGetRequest(refineHost, "command/core/get-all-project-metadata")
+    val response = client.execute(request)
+
+    val metaJson: Json = Parse.parseOption(EntityUtils.toString(response.getEntity())).getOrElse(jEmptyObject) 
+    val projects = (metaJson.hcursor --\ "projects")
+    
+    projects.focus.get.obj.get.fieldSet.filter{ case p =>      
+      (projects --\ p --\ "name").focus.get.as[String].value.get == user
+    }.map{case p =>
+        val date = (projects --\ p --\ "modified").focus.get.as[String].value.get
+        
+        val rs = new com.github.nscala_time.time.RichString(date)
+        // The time is parsed as GMT, so we need to re-add the zone time diff
+        // Should use the library to do so properly, but for now we just add the missing 4 hours
+        (p, rs.toDateTime.plusHours(4).toString("MM/dd/y 'at' hh:mma"))
+        // I may also want to add some sorting by date here. Not urgent as OpenRefine seems to
+        // return them in chronological order anyway.
+      }.toMap
+
+  }
+
+}
+
 class OpenRefineProjectClient(refineHost:String, projectId:String, refineData:String = "/tmp/refine"){
 
   implicit def ColumnDecodeJson: DecodeJson[Column] =
@@ -81,10 +110,12 @@ class OpenRefineProjectClient(refineHost:String, projectId:String, refineData:St
 
   }
 
-  // get field for row
-  def getFieldforRow(row:String, field: String): String = {
+
+  // get field for row (generic)
+  // If the field is key, look up rows until found
+  def getFieldforRow(row:String, field: String, key: Boolean = false): Json = {
     // First, find out the column index of record - id
-    val key: Int = getModels().find(_.name == field).get.idx
+    val idx: Int = getModels().find(_.name == field).get.idx
     val request = HTTPUtils.createGetRequest(
       refineHost, "command/core/get-rows", 
       Map("project" -> projectId,
@@ -95,8 +126,10 @@ class OpenRefineProjectClient(refineHost:String, projectId:String, refineData:St
     val response = client.execute(request)
     val rowJson: Json = Parse.parseOption(EntityUtils.toString(response.getEntity())).getOrElse(jEmptyObject)
 
-    (((rowJson.hcursor --\ "rows" \\).any --\ "cells" =\ key).any --\ "v").focus.getOrElse(jEmptyString)
-      .as[String].value.get
+    (((rowJson.hcursor --\ "rows" \\).any --\ "cells" =\ idx).any --\ "v").focus.getOrElse(
+      // Recursing to first row with non-null field
+      getFieldforRow((row.toInt - 1).toString, field, key)
+    ) // NB cannot convert to string here because of recursion.
 
   }
 
@@ -138,14 +171,11 @@ class OpenRefineProjectClient(refineHost:String, projectId:String, refineData:St
         val pnew : String = Parse.parseWith(nw, _.field("v").getOrElse(jEmptyString).as[String].value.get, 
           err => err)
         Some(Change(
-          getFieldforRow(row, "record - url"),          
+          getFieldforRow(row, "record - url", true).as[String].value.get,
           getModels().find(_.idx == cell.toInt).get.name,
           pold,
           pnew
         ))
-        // Can be disaplayed as:
-        // Changed record at http://catalog.hathitrust.org/Record/001728984 (iframe could show record from hathi)
-        // Changed "title" from "gne" to "gnegne"
       case _ => None
     }).flatten
 
@@ -156,7 +186,8 @@ class OpenRefineProjectClient(refineHost:String, projectId:String, refineData:St
 
 
 
-class OpenRefineImporter(refineHost:String) {
+class OpenRefineImporter(refineHost:String, userEmail: String) {
+  // The user's email is used to distinguish projects in an OR instance used by multiple users
 
   val client = HttpClientBuilder.create().build    
 
@@ -183,7 +214,7 @@ class OpenRefineImporter(refineHost:String) {
     EntityUtils.toString(response.getEntity())
   }
 
-  def sendData(data:List[Json], path:List[String]) : Future[_] = {
+  def sendData(data:List[Json], path:List[String]) = {
     import org.apache.http.entity.ContentType
     import java.nio.charset.StandardCharsets
 
@@ -215,7 +246,7 @@ class OpenRefineImporter(refineHost:String) {
 
     // In order to return the id of the finalized project, we must wait on OpenRefine to
     // complete the import. So we return a Future of the project id.
-    Future {
+    // Future {
 
       // Before proceeding, make sure the project creation is complete (NB it doens't guarantee that the import is done)
       // This could be handled more natively, perhaps with another Future.
@@ -223,20 +254,20 @@ class OpenRefineImporter(refineHost:String) {
         err => err) == "done" ) {
 
         // Check status until a project ID appears (which is introduced together with state : created-project)
-        def getAsyncProjectId() : String = {
+        def getAsyncProjectId() : (String, String) = {
           val status: Json = Parse.parseOption(checkStatus(jobId)).get  
           val cursor = status.hcursor
           val pid = (cursor --\ "job" --\ "config" --\ "projectID")
           val value = pid.focus.getOrElse( getAsyncProjectId() ).toString
           client.close()
-          value
+          (value, userEmail)
         }
         
         getAsyncProjectId()
 
       }
       else None
-    }
+    // }
 
   }
 
@@ -255,7 +286,7 @@ class OpenRefineImporter(refineHost:String) {
         "guessCellValueTypes" := jFalse,
         "storeEmptyStrings" := jTrue,
         "includeFileSources" := jFalse,
-        "projectName" := "MetaHathi"
+        "projectName" := userEmail
       )
 
     val params = 
