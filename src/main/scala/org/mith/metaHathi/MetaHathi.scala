@@ -30,15 +30,18 @@ import org.openid4java.message._
 
 import org.apache.http._
 
+import com.typesafe.config.ConfigFactory
+
 case class AuthUser(email: String, firstName: String, lastName: String)
 
 class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport with FileUploadSupport with FutureSupport{
 
-  private val APP_URL = "http://localhost:8081"
-  // private val OPENREFINE_HOST = "127.0.0.1:3333"
-  // private val APP_URL = "http://localhost:8080"
-  private val OPENREFINE_HOST = "127.0.0.1:8080/openrefine"
-  private val RECORDS_PATH = "/home/rviglian/Projects/htrc/hathi/output/results"
+  private val conf = ConfigFactory.load
+
+  private val APP_URL = conf.getString("app.url")
+  private val RECORDS_PATH = conf.getString("app.data")
+  private val OPENREFINE_HOST = conf.getString("openrefine.host")
+  private val OPENREFINE_DATA = conf.getString("openrefine.data")
 
   protected implicit def executor: ExecutionContext = system.dispatcher
 
@@ -46,25 +49,6 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
 
   var sessionAuth: ConcurrentMap[String, AuthUser] = new ConcurrentHashMap[String, AuthUser]()
   val manager = new ConsumerManager
-
-  get("/sandbox") {
-    <html>
-
-      <body>
-      {
-        sessionAuth.get(session.getId) match {
-          case None => { }
-          case Some(user) => {
-            val person = "Hello %s %s".format(user.firstName, user.lastName) 
-            <div><p>{person}</p><p><a href="/logout">logout</a></p></div>
-          }
-        }
-        
-      }
-      </body>
-
-    </html>
-  }
 
   get("/") {    
 
@@ -78,7 +62,15 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
       }
       case Some(user) => {
         val person = "%s %s".format(user.firstName, user.lastName) 
-        ssp("/index", "person" -> person)
+
+        val orClient = new OpenRefineClient(OPENREFINE_HOST)
+        val projects = orClient.getAllProjectMetadataForUser(user.email)
+
+        val importing = new File("/tmp" + "/metahathi/"+user.email.replace("@", "_")).exists
+
+        // val importing = Option(session.getAttribute("importing")) getOrElse false
+
+        ssp("/index", "person" -> person, "projects" -> projects, "importing" -> importing)
       }
     }
 
@@ -91,32 +83,58 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
     sessionAuth.get(session.getId) match {
       case None => ssp("/login")
       case Some(user) => 
-        
+
+        // Creating a directory and storing a file with the user's email
+        // to determine whether the project is still importing or not.
+        // This is not very safe, arguably, and should be fixed        
+        val locksPath = "/tmp" + "/metahathi"
+        new File(locksPath).mkdir()
+
+        val lock = new File(locksPath+"/"+user.email.replace("@", "_"))
+        lock.createNewFile()
+        lock.deleteOnExit()
+
+        // Now collect files from filesystem
+
         val base = new File(RECORDS_PATH)
         val myCol = new Collection(base, base)
 
         val JsonPat = """(.*)?\.([^,]*)?\.(json)$""".r
 
-        val importer = new OpenRefineImporter(OPENREFINE_HOST)
+        val importer = new OpenRefineImporter(OPENREFINE_HOST, user.email)
 
         val files = List.fromArray(base.listFiles)
 
-        val data : List[Json] = files.map ( file =>
-          file.getName match {
-            case JsonPat(bib, id, ext) =>
-              val htid = new Htid(bib, id)
-              val metadata = myCol.volumeMetadata(htid).getOrElse(halt(500, "500"))               
-              MetadataWrangler.recordToJson(metadata)              
-            case _ => jEmptyString
-          }
-        )
+        // Now parse files and send to OpenRefine
+        // This can take a while (minutes for thousands of entries)
+        // so use a future
 
-        // importer.sendData returns a future, which is handled implicitly by FutureSupport
-        // so we can use for instead of onSuccess. onSuccess causes redirect to be called out
-        // of context and return an exception.
+        val project : Future[_] = future {
 
-        for (pid <- importer.sendData(data, List("_", "record"))) yield {redirect("/edit/" + pid)}
-      
+          val data : List[Json] = files.map ( file =>
+            file.getName match {
+              case JsonPat(bib, id, ext) =>
+                val htid = new Htid(bib, id)
+                val metadata = myCol.volumeMetadata(htid).getOrElse(halt(500, "500"))               
+                MetadataWrangler.recordToJson(metadata)              
+              case _ => jEmptyString
+            }
+          )
+
+          importer.sendData(data, List("_", "record"))
+
+        }
+
+        
+        // Remove lock file when the project is created (future is completed)
+        // NB it should probably delete it also onFailure
+        project onSuccess {
+          case (pid:String, userEmail:String) => 
+            new File("/tmp"+"/metahathi/"+userEmail.replace("@", "_")).delete()
+        }
+
+        redirect("/")
+
     }
 
   }
@@ -144,7 +162,7 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
           val orClient = new OpenRefineProjectClient(OPENREFINE_HOST, params("proj"))   
           val changes = orClient.getAllChanges
 
-          ssp("/review", "person" -> person, "changes" -> changes)
+          ssp("/review", "person" -> person, "project" -> params("proj"), "changes" -> changes)
         case None => ssp("/login") 
     }
   }
