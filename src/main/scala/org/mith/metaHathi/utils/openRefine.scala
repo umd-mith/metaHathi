@@ -77,7 +77,7 @@ class OpenRefineClient(refineHost:String) {
 
 }
 
-class OpenRefineProjectClient(refineHost:String, projectId:String, refineData:String = "/tmp/refine"){
+class OpenRefineProjectClient(refineHost:String, projectId:String, refineData:String){
 
   implicit def ColumnDecodeJson: DecodeJson[Column] =
     DecodeJson(c => for {
