@@ -66,9 +66,7 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
         val orClient = new OpenRefineClient(OPENREFINE_HOST)
         val projects = orClient.getAllProjectMetadataForUser(user.email)
 
-        val importing = new File("/tmp" + "/metahathi/"+user.email.replace("@", "_")).exists
-
-        // val importing = Option(session.getAttribute("importing")) getOrElse false
+        val importing = new File(OPENREFINE_DATA+"/"+user.email.replace("@", "_")).exists
 
         ssp("/index", "person" -> person, "projects" -> projects, "importing" -> importing)
       }
@@ -87,7 +85,8 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
         // Creating a directory and storing a file with the user's email
         // to determine whether the project is still importing or not.
         // This is not very safe, arguably, and should be fixed        
-        val locksPath = "/tmp" + "/metahathi"
+        
+        val locksPath = OPENREFINE_DATA
         new File(locksPath).mkdir()
 
         val lock = new File(locksPath+"/"+user.email.replace("@", "_"))
@@ -130,7 +129,7 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
         // NB it should probably delete it also onFailure
         project onSuccess {
           case (pid:String, userEmail:String) => 
-            new File("/tmp"+"/metahathi/"+userEmail.replace("@", "_")).delete()
+            new File(OPENREFINE_DATA+"/"+userEmail.replace("@", "_")).delete()
         }
 
         redirect("/")
@@ -159,7 +158,7 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
         case Some(user) => 
           val person = "%s %s".format(user.firstName, user.lastName) 
 
-          val orClient = new OpenRefineProjectClient(OPENREFINE_HOST, params("proj"))   
+          val orClient = new OpenRefineProjectClient(OPENREFINE_HOST, params("proj"), OPENREFINE_DATA)   
           val changes = orClient.getAllChanges
 
           ssp("/review", "person" -> person, "project" -> params("proj"), "changes" -> changes)
@@ -169,7 +168,10 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
 
   get("/logout") {
     sessionAuth.get(session.getId) match {
-        case Some(user) => sessionAuth -= session.getId
+        case Some(user) => 
+          // Remove lock files on logout
+          new File(OPENREFINE_DATA+"/"+user.email.replace("@", "_")).delete()
+          sessionAuth -= session.getId
         case None => 
     }
     session.invalidate()
