@@ -36,7 +36,7 @@ object MetadataWrangler {
   implicit def RecordEncodeJson: EncodeJson[RecordMetadata] = 
 		EncodeJson((rm: RecordMetadata) =>
       Json("record" -> 
-        (// ("id" := rm.id) ->: 
+        (("id" := rm.id) ->: 
         ("url" := rm.url) ->:
         // ("titles" := rm.titles) ->: 
         ("isbns" := rm.isbns) ->: 
