@@ -1,0 +1,40 @@
+<%@ val person: String %>
+<%@ val project: String %>
+<div class="container-fluid">
+   <div class="row well" id="top_controls">
+   	<h1> <a href="/">MetaHathi</a> -- Editing! </h1>
+   	<div class="col-sm-9">
+   		<p>Logged in as <%= person %> (<a href="/logout">logout</a>)</p>
+   	</div>
+   	<div class="col-sm-3">
+   		<a class="btn btn-primary btn-lg" id="btn-done" role="button" href="/review/<%= project %>">
+   	      Done! Go to review.
+   	   </a>
+         <img id="spinner" src='/images/spinner.gif'></img>
+   	</div>
+   </div>
+   <div class="row" id="openRefine_frame">   	
+   	<iframe src="/openrefine/project?project=<%= project %>">
+   		<!-- OpenRefine to appear here -->
+   	</iframe>
+   </div>
+</div>
+<script>
+// Removing some buttons for a cleaner interface and to present *some* abuse of OpenRefine
+
+$("iframe").on("load", function(){
+   var $frame = $(this).contents();
+   $frame.find("#header").remove();
+   $frame.find("#extension-bar").hide();
+});
+
+// Spinner
+
+$("#spinner").hide();
+
+$("#btn-done").click(function(){
+   $(this).hide();
+   $("#spinner").show();
+});
+
+</script>

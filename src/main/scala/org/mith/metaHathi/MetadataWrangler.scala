@@ -5,6 +5,7 @@ import argonaut._, Argonaut._
 
 import edu.umd.mith.hathi._
 import edu.umd.mith.hathi.RecordId
+import edu.umd.mith.util.marc.MarcRecord
 
 import java.net.URL
 
@@ -22,17 +23,27 @@ object MetadataWrangler {
   implicit def RecordIdEncodeJson: EncodeJson[RecordId] = 
     jencode1((ri: RecordId) => (ri.id) )
 
+  implicit def MarcEncodeJson: EncodeJson[MarcRecord] = 
+    EncodeJson((mr: MarcRecord) =>
+      ("subjects" := mr.subjects) ->: 
+      ("authors" := mr.authors) ->: 
+      ("secondaryAuthors" := mr.secondaryAuthors) ->:
+      ("titles" := mr.titles) ->:
+      ("editions" := mr.editions) ->:
+      jEmptyObject
+    )
+
   implicit def RecordEncodeJson: EncodeJson[RecordMetadata] = 
 		EncodeJson((rm: RecordMetadata) =>
       Json("record" -> 
         (("id" := rm.id) ->: 
         ("url" := rm.url) ->:
-        ("titles" := rm.titles) ->: 
+        // ("titles" := rm.titles) ->: 
         ("isbns" := rm.isbns) ->: 
         ("issns" := rm.issns) ->: 
         ("oclcs" := rm.oclcs) ->: 
         ("publishDates" := rm.publishDates) ->: 
-        jEmptyObject)
+        rm.marc.asJson)
       )
     )
       
