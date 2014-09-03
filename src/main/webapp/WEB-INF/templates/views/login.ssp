@@ -3,11 +3,45 @@
     <h1>MetaHathi</h1>
     <p>Import Hathi Trust Digital Library metadata into OpenRefine for making your own corrections.</p>
 
-    <p>Before proceeding, please login with an OpenID provider (only Google supported for now):</p>
+    <p>Before proceeding, please login with your Google account:</p>
 
-    <a class="btn btn-info btn-lg btn-file" role="button" href="/login/google">
-      Login
-    </a>
+    <span id="signinButton">
+	  <span
+	    class="g-signin"
+	    data-callback="signinCallback"
+	    data-clientid="1003201408818-s9p0415vo7jbeoa14c8hvsoibu4gok75.apps.googleusercontent.com"
+	    data-cookiepolicy="single_host_origin"
+	    data-requestvisibleactions="http://schema.org/AddAction"
+	    data-scope="https://www.googleapis.com/auth/plus.login https://www.googleapis.com/auth/userinfo.email">
+	  </span>
+	</span>
 
   </div>
 </div>
+
+<script type="text/javascript">
+
+	function signinCallback(authResult) {
+	  if (authResult['status']['signed_in']) {
+	    $.ajax({
+            type: 'POST',
+            url: '/login/google',
+            contentType: 'application/x-www-form-urlencoded; charset=utf-8',
+            data: {authCode: authResult.code },
+            success: function(result) {
+                window.location.replace('/');
+            },
+            error: function(result) {
+                window.location.replace('/not-authorized');
+            }
+        });
+	  }
+	}
+
+
+  (function() {
+   var po = document.createElement('script'); po.type = 'text/javascript'; po.async = true;
+   po.src = 'https://apis.google.com/js/client:plusone.js';
+   var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(po, s);
+ })();
+</script>
