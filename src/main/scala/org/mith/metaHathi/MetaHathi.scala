@@ -23,16 +23,11 @@ import argonaut._, Argonaut._
 
 import _root_.akka.actor.{Actor, ActorRef, ActorSystem}
 
-import org.openid4java.consumer._
-import org.openid4java.discovery._
-import org.openid4java.message.ax._
-import org.openid4java.message._
-
 import org.apache.http._
 
 import com.typesafe.config.ConfigFactory
 
-case class AuthUser(email: String, firstName: String, lastName: String)
+case class AuthUser(email: String, name: String)
 
 class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport with FileUploadSupport with FutureSupport{
 
@@ -45,10 +40,7 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
 
   protected implicit def executor: ExecutionContext = system.dispatcher
 
-  configureMultipartHandling(MultipartConfig(maxFileSize = Some(3*1024*1024)))
-
   var sessionAuth: ConcurrentMap[String, AuthUser] = new ConcurrentHashMap[String, AuthUser]()
-  val manager = new ConsumerManager
 
   get("/") {    
 
@@ -57,11 +49,11 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
     sessionAuth.get(session.getId) match {
       case None => { 
 
-        ssp("/login")
+        redirect("/login")
 
       }
       case Some(user) => {
-        val person = "%s %s".format(user.firstName, user.lastName) 
+        val person = user.name
 
         val orClient = new OpenRefineClient(OPENREFINE_HOST)
         val projects = orClient.getAllProjectMetadataForUser(user.email)
@@ -71,6 +63,13 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
         ssp("/index", "person" -> person, "projects" -> projects, "importing" -> importing)
       }
     }
+
+  }
+
+  get("/login") {
+    contentType = "text/html"
+
+    ssp("/login")
 
   }
 
@@ -144,7 +143,7 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
 
     sessionAuth.get(session.getId) match {
         case Some(user) => 
-          val person = "%s %s".format(user.firstName, user.lastName) 
+          val person = user.name
           ssp("/edit", "person" -> person, "project" -> params("proj"))
         case None => ssp("/login") 
     }
@@ -156,7 +155,7 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
 
     sessionAuth.get(session.getId) match {
         case Some(user) => 
-          val person = "%s %s".format(user.firstName, user.lastName) 
+          val person = user.name
 
           val orClient = new OpenRefineProjectClient(OPENREFINE_HOST, params("proj"), OPENREFINE_DATA)   
           val changes = orClient.getAllChanges
@@ -178,49 +177,15 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
     redirect("/")
   }
 
-  
-  get("/login/google") {
-      
-    sessionAuth.get(session.getId) match {
-      case None => {        
-          val discoveries = manager.discover("https://www.google.com/accounts/o8/id")
-          val discovered = manager.associate(discoveries)
-          session.setAttribute("discovered", discovered)
-          val authReq = manager.authenticate(discovered, APP_URL + "/login/google/authenticated")
-          val fetch = FetchRequest.createFetchRequest()
-          fetch.addAttribute("email", "http://schema.openid.net/contact/email",true)
-          fetch.addAttribute("firstname", "http://axschema.org/namePerson/first", true)
-          fetch.addAttribute("lastname", "http://axschema.org/namePerson/last", true)
-          authReq.addExtension(fetch)
-          redirect(authReq.getDestinationUrl(true))        
-      }
-      case Some(user) => redirect("/")
-    }
+  post("/login/google") {
+    val authCode: String = params.getOrElse("authCode", halt(400))
+    val guser = Authorization.google(authCode).getOrElse(redirect("/not-authorized"))
+    sessionAuth += (session.getId -> AuthUser(guser.email, guser.name))     
+    redirect("/")
   }
 
-  get("/login/google/authenticated") {
-      val openidResp = new ParameterList(request.getParameterMap())
-      val discovered = session.getAttribute("discovered").asInstanceOf[DiscoveryInformation]
-      val receivingURL = request.getRequestURL()
-      val queryString = request.getQueryString()
-      if (queryString != null && queryString.length() > 0)
-          receivingURL.append("?").append(request.getQueryString())
-
-      val verification = manager.verify(receivingURL.toString(), openidResp, discovered)
-      val verified = verification.getVerifiedId()
-      if (verified != null) {
-        val authSuccess = verification.getAuthResponse().asInstanceOf[AuthSuccess]
-        if (authSuccess.hasExtension(AxMessage.OPENID_NS_AX)){
-          val fetchResp = authSuccess.getExtension(AxMessage.OPENID_NS_AX).asInstanceOf[FetchResponse]
-          val emails = fetchResp.getAttributeValues("email")
-          val email = emails.get(0).asInstanceOf[String]
-          val firstName = fetchResp.getAttributeValue("firstname")
-          val lastName = fetchResp.getAttributeValue("lastname")
-          sessionAuth += (session.getId -> AuthUser(email, firstName, lastName))          
-          redirect("/")
-        }
-      } else
-        "not verified"        
+  get("/not-authorized") {
+    "not authorized!"
   }
 
 }
