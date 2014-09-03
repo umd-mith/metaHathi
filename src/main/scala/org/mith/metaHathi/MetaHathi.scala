@@ -33,7 +33,6 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
 
   private val conf = ConfigFactory.load
 
-  private val APP_URL = conf.getString("app.url")
   private val RECORDS_PATH = conf.getString("app.data")
   private val OPENREFINE_HOST = conf.getString("openrefine.host")
   private val OPENREFINE_DATA = conf.getString("openrefine.data")
