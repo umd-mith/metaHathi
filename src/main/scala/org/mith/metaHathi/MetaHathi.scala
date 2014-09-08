@@ -72,6 +72,19 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
 
   }
 
+  get("/demo") {
+    contentType = "text/html"   
+
+    val user = AuthUser("metahathidemo@umd.edu", "Demo")
+    sessionAuth += (session.getId -> user)     
+    val orClient = new OpenRefineClient(OPENREFINE_HOST)
+    val projects = orClient.getAllProjectMetadataForUser(user.email)
+    if (projects.size > 0) {
+      val pid :String = projects.toList.head._1
+      redirect("/edit/"+pid)
+    } else "No demo project loaded! :( "
+  }
+
   get("/process") { 
 
     contentType = "text/html"   
