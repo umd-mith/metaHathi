@@ -17,6 +17,11 @@
 	  </span>
 	</span>
 
+    <p>Or proceed to a demo collection:</p>
+    <a class="btn btn-primary btn-lg" id="btn-import" role="button" href="/demo">
+      Try demo 
+    </a>
+
   </div>
 </div>
 
