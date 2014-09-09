@@ -33,7 +33,6 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
 
   private val conf = ConfigFactory.load
 
-  private val APP_URL = conf.getString("app.url")
   private val RECORDS_PATH = conf.getString("app.data")
   private val OPENREFINE_HOST = conf.getString("openrefine.host")
   private val OPENREFINE_DATA = conf.getString("openrefine.data")
@@ -71,6 +70,19 @@ class HathiImport(system:ActorSystem) extends MetaHathiStack with ScalateSupport
 
     ssp("/login")
 
+  }
+
+  get("/demo") {
+    contentType = "text/html"   
+
+    val user = AuthUser("metahathidemo@umd.edu", "Demo")
+    sessionAuth += (session.getId -> user)     
+    val orClient = new OpenRefineClient(OPENREFINE_HOST)
+    val projects = orClient.getAllProjectMetadataForUser(user.email)
+    if (projects.size > 0) {
+      val pid :String = projects.toList.head._1
+      redirect("/edit/"+pid)
+    } else "No demo project loaded! :( "
   }
 
   get("/process") { 
