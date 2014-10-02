@@ -48,3 +48,4 @@ will need to copy it to:
 
     catalina restart
     open http://localhost:8080/
+

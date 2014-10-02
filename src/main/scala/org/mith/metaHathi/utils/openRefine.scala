@@ -230,10 +230,10 @@ class OpenRefineImporter(refineHost:String, userEmail: String) {
 
     val entity = MultipartEntityBuilder.create()
 
-    // val out = new java.io.PrintWriter(new java.io.FileWriter("/tmp/full.json"))
+    val out = new java.io.PrintWriter(new java.io.FileWriter("/tmp/full.json"))
 
     for ( d <- data ) {
-      // out.println(d.toString)
+      out.println(d.toString)
       val dataStream = new ByteArrayInputStream(d.toString.getBytes(StandardCharsets.UTF_8))
       entity.addBinaryBody("f", dataStream, ContentType APPLICATION_JSON, "f")
     }
